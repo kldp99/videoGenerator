@@ -6,6 +6,7 @@ ffmpeg.setFfmpegPath(ffmpegPath);
 const tf = require("@tensorflow/tfjs");
 const cocoSsd = require("@tensorflow-models/coco-ssd");
 const { createCanvas, loadImage } = require("canvas");
+const robotoRegular = "fontFamily/Roboto/static/Roboto-Regular.ttf";
 
 const OUTPUT_DIR = "output";
 const TEMP_DIR = "temp_clips";
@@ -58,7 +59,9 @@ const processSlide = async (slide, index) => {
     const startZoom = 1.3;
     const endZoom = 1.0;
     const rate = (startZoom - endZoom) / totalFrames;
-    zoomExpr = `zoom='max(${endZoom}, ${startZoom.toFixed(3)} - ${rate.toFixed(5)}*on)'`;
+    zoomExpr = `zoom='max(${endZoom}, ${startZoom.toFixed(3)} - ${rate.toFixed(
+      5
+    )}*on)'`;
   }
 
   if (slide.effect === "focus" && slide.focus) {
@@ -77,7 +80,7 @@ const processSlide = async (slide, index) => {
       .inputOptions("-loop 1")
       .complexFilter(
         [
-          `[0:v]${zoompanFilter}[z];[z]drawtext=text='${slide.text}':fontcolor=white:fontsize=36:x=(w-text_w)/2:y=h-60:box=1:boxcolor=black@0.5:boxborderw=10[out]`,
+          `[0:v]${zoompanFilter}[z];[z]drawtext=fontfile='${robotoRegular}':text='${slide.text}':fontcolor=white:fontsize=36:x=(w-text_w)/2:y=h-60:box=1:boxcolor=black@0.5:boxborderw=10[out]`,
         ],
         "out"
       )
