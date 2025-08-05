@@ -7,15 +7,8 @@
   },
   {
     "image": "images/img2.jpg",
-    "effect": "zoom-in",
-    "focus": "person",
-    "text": "Owned by Paul Newman",
-    "duration": 5
-  },
-  {
-    "image": "images/img3.jpg",
-    "effect": "zoom-in",
-    "text": "Sold for $17.8 Million at Auction",
+    "effect": "zoom-out",
+    "text": "The Legendary Rolex Daytona",
     "duration": 5
   }
 ]

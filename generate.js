@@ -13,7 +13,14 @@ const TEMP_DIR = "temp_clips";
 if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR);
 
-async function detectFocus(imagePath, label) {
+const removeCreateFolder = () => {
+  fs.rmdirSync(`${TEMP_DIR}/`, { recursive: true });
+  fs.rmdirSync(`${OUTPUT_DIR}/`, { recursive: true });
+  fs.mkdirSync(`${TEMP_DIR}/`);
+  fs.mkdirSync(`${OUTPUT_DIR}/`);
+};
+
+const detectFocus = async (imagePath, label) => {
   const image = await loadImage(imagePath);
   const canvas = createCanvas(image.width, image.height);
   const ctx = canvas.getContext("2d");
@@ -34,20 +41,24 @@ async function detectFocus(imagePath, label) {
     cx: x + w / 2,
     cy: y + h / 2,
   };
-}
+};
 
-async function processSlide(slide, index) {
+const processSlide = async (slide, index) => {
   const input = slide.image;
   const duration = slide.duration || 4;
   const output = path.join(TEMP_DIR, `clip${index}.mp4`);
   const size = "1280x720";
 
-  let zoomExpr = "zoom='min(zoom+0.0005,1.1)'"; // smoother zoom
+  let zoomExpr = "zoom='1+0.002*on'";
   let xExpr = "x='iw/2-(iw/zoom/2)'";
   let yExpr = "y='ih/2-(ih/zoom/2)'";
 
   if (slide.effect === "zoom-out") {
-    zoomExpr = "zoom='if(lte(zoom,1.0),1.0,max(zoom-0.0005,1.0))'";
+    const totalFrames = duration * 25;
+    const startZoom = 1.3;
+    const endZoom = 1.0;
+    const rate = (startZoom - endZoom) / totalFrames;
+    zoomExpr = `zoom='max(${endZoom}, ${startZoom.toFixed(3)} - ${rate.toFixed(5)}*on)'`;
   }
 
   if (slide.effect === "focus" && slide.focus) {
@@ -81,9 +92,10 @@ async function processSlide(slide, index) {
         reject(err);
       });
   });
-}
+};
 
-async function createFinalVideo(audioPath = null) {
+const createFinalVideo = async (audioPath = null) => {
+  await removeCreateFolder();
   const slides = JSON.parse(fs.readFileSync("script.json", "utf-8"));
   const videoListPath = path.join(TEMP_DIR, "files.txt");
 
@@ -112,6 +124,6 @@ async function createFinalVideo(audioPath = null) {
       })
       .on("error", reject);
   });
-}
+};
 
 createFinalVideo("audio/narration.mp3").catch(console.error);
