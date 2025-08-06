@@ -1,4 +1,3 @@
-// frame-by-frame video generator using canvas
 const fs = require("fs");
 const path = require("path");
 const ffmpegPath = require("ffmpeg-static");
