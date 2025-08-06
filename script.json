@@ -1,12 +1,12 @@
 [
   {
-    "image": "images/img1.jpg",
+    "image": "img1.jpg",
     "effect": "zoom-in",
     "text": "The Legendary Rolex Daytona",
     "duration": 5
   },
   {
-    "image": "images/img2.jpg",
+    "image": "img2.jpg",
     "effect": "zoom-out",
     "text": "The Legendary Rolex Daytona",
     "duration": 5

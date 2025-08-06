@@ -1,92 +1,127 @@
+// frame-by-frame video generator using canvas
 const fs = require("fs");
 const path = require("path");
 const ffmpegPath = require("ffmpeg-static");
 const ffmpeg = require("fluent-ffmpeg");
 ffmpeg.setFfmpegPath(ffmpegPath);
-const tf = require("@tensorflow/tfjs");
-const cocoSsd = require("@tensorflow-models/coco-ssd");
-const { createCanvas, loadImage } = require("canvas");
-const robotoRegular = "fontFamily/Roboto/static/Roboto-Regular.ttf";
 
+const { createCanvas, loadImage } = require("canvas");
+
+const INPUT_DIR = "images";
+const FRAME_DIR = "frames";
 const OUTPUT_DIR = "output";
 const TEMP_DIR = "temp_clips";
+const FILE_LOG_DETAILS = "files.txt";
+const WIDTH = 1280;
+const HEIGHT = 720;
+const FPS = 25;
 
-if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
-if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR);
-
-const removeCreateFolder = () => {
-  fs.rmdirSync(`${TEMP_DIR}/`, { recursive: true });
-  fs.rmdirSync(`${OUTPUT_DIR}/`, { recursive: true });
-  fs.mkdirSync(`${TEMP_DIR}/`);
-  fs.mkdirSync(`${OUTPUT_DIR}/`);
-};
-
-const processSlide = async (slide, index) => {
-  const input = slide.image;
-  const duration = slide.duration || 4;
-  const output = path.join(TEMP_DIR, `clip${index}.mp4`);
-  const size = "1280x720";
-  const totalFrames = duration * 25;
-
-  let zoomExpr = null;
-  let xExpr = "x='floor(iw/2 - iw/zoom/2)'";
-  let yExpr = "y='floor(ih/2 - ih/zoom/2)'";
-
-  switch (slide.effect) {
-    case "zoom-in":
-      zoomExpr = "zoom='1+0.003*on'";
-      break;
-
-    case "zoom-out":
-      const startZoom = 1.3;
-      const endZoom = 1.0;
-      const rate = (startZoom - endZoom) / totalFrames;
-      zoomExpr = `zoom='max(${endZoom}, ${startZoom.toFixed(3)} - ${rate.toFixed(5)}*on)'`;
-      break;
-  }
-
-  const mainFilter = zoomExpr
-    ? `zoompan=${zoomExpr}:${xExpr}:${yExpr}:d=${totalFrames}:s=${size}:fps=25`
-    : `scale=${size}`;
-
-  return new Promise((resolve, reject) => {
-    ffmpeg(input)
-      .inputOptions("-loop 1")
-      .complexFilter(
-        [
-          `[0:v]${mainFilter}[z];[z]drawtext=fontfile='${robotoRegular}':text='${slide.text}':fontcolor=white:fontsize=36:x=(w-text_w)/2:y=h-60:box=1:boxcolor=black@0.5:boxborderw=10[out]`,
-        ],
-        "out"
-      )
-      .outputOptions([`-t ${duration}`, "-pix_fmt yuv420p"])
-      .save(output)
-      .on("end", () => {
-        console.log(`✅ Slide ${index + 1} rendered.`);
-        resolve();
-      })
-      .on("error", (err) => {
-        console.error(`❌ Slide ${index + 1} failed:`, err);
-        reject(err);
-      });
+const checkDirectory = () => {
+  fs.unlinkSync(FILE_LOG_DETAILS);
+  [TEMP_DIR, OUTPUT_DIR, FRAME_DIR].forEach((e) => {
+    fs.rmdirSync(`${e}/`, { recursive: true });
+    fs.mkdirSync(`${e}/`);
   });
 };
 
+const generateFrames = async (slide, index) => {
+  const duration = slide.duration || 4;
+  const totalFrames = duration * FPS;
+  const inputImagePath = path.join(INPUT_DIR, slide.image);
+  const image = await loadImage(inputImagePath);
+
+  for (let i = 0; i < totalFrames; i++) {
+    const canvas = createCanvas(WIDTH, HEIGHT);
+    const ctx = canvas.getContext("2d");
+
+    // Calculate zoom factor
+    let zoom = 1;
+    if (slide.effect === "zoom-in") {
+      zoom = 1 + 0.0015 * i;
+    } else if (slide.effect === "zoom-out") {
+      zoom = 1.15 - ((1.15 - 1.0) / totalFrames) * i;
+    }
+
+    const iw = image.width;
+    const ih = image.height;
+    const scaledWidth = iw * zoom;
+    const scaledHeight = ih * zoom;
+    const x = (WIDTH - scaledWidth) / 2;
+    const y = (HEIGHT - scaledHeight) / 2;
+
+    ctx.drawImage(image, x, y, scaledWidth, scaledHeight);
+
+    // Draw text
+    ctx.font = "36px Roboto";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    const text = slide.text || "";
+    const textWidth = ctx.measureText(text).width;
+    const boxX = (WIDTH - textWidth) / 2 - 20;
+    const boxY = HEIGHT - 100;
+    const boxHeight = 50;
+    ctx.fillRect(boxX, boxY, textWidth + 40, boxHeight);
+
+    ctx.fillStyle = "white";
+    ctx.fillText(text, (WIDTH - textWidth) / 2, HEIGHT - 65);
+
+    const framePath = path.join(
+      FRAME_DIR,
+      `slide${index}_frame${i.toString().padStart(4, "0")}.png`
+    );
+    fs.writeFileSync(framePath, canvas.toBuffer("image/png"));
+  }
+};
+
+const renderVideo = (
+  slideIndex,
+  frameCount,
+  outputFilePath,
+  audioPath = null
+) => {
+  return new Promise((resolve, reject) => {
+    let cmd = ffmpeg()
+      .input(path.join(FRAME_DIR, `slide${slideIndex}_frame%04d.png`))
+      .inputOptions("-framerate", `${FPS}`)
+      .outputOptions("-pix_fmt", "yuv420p")
+      .videoCodec("libx264");
+
+    if (audioPath) {
+      cmd = cmd.input(audioPath).outputOptions("-shortest");
+    }
+
+    cmd
+      .output(outputFilePath)
+      .on("end", () => {
+        console.log(`🎬 Slide ${slideIndex + 1} video rendered.`);
+        resolve();
+      })
+      .on("error", (err) => {
+        console.error("❌ Video render error:", err.message);
+        reject(err);
+      })
+      .run();
+  });
+};
 
 const createFinalVideo = async (audioPath = null) => {
-  await removeCreateFolder();
+  await checkDirectory();
   const slides = JSON.parse(fs.readFileSync("script.json", "utf-8"));
-  const videoListPath = path.join(TEMP_DIR, "files.txt");
 
   for (let i = 0; i < slides.length; i++) {
-    await processSlide(slides[i], i);
+    await generateFrames(slides[i], i);
+    const frameCount = (slides[i].duration || 4) * FPS;
+    const videoPath = path.join(TEMP_DIR, `clip${i}.mp4`);
+    await renderVideo(i, frameCount, videoPath, null);
   }
+  const clipFiles = slides
+    .map((_, i) => `file '${path.posix.join(TEMP_DIR, `clip${i}.mp4`)}'`)
+    .join("\n");
 
-  const clipFiles = slides.map((_, i) => `file 'clip${i}.mp4'`).join("\n");
-  fs.writeFileSync(videoListPath, clipFiles);
+  fs.writeFileSync(FILE_LOG_DETAILS, clipFiles);
 
   return new Promise((resolve, reject) => {
     let cmd = ffmpeg()
-      .input(videoListPath)
+      .input(FILE_LOG_DETAILS)
       .inputOptions(["-f", "concat", "-safe", "0"])
       .outputOptions(["-c:v", "libx264"]);
 
@@ -97,10 +132,13 @@ const createFinalVideo = async (audioPath = null) => {
     cmd
       .save(path.join(OUTPUT_DIR, "final_video.mp4"))
       .on("end", () => {
-        console.log("\n🎬 Video created at output/final_video.mp4");
+        console.log("\n✅ Final video created at output/final_video.mp4");
         resolve();
       })
-      .on("error", reject);
+      .on("error", (err) => {
+        console.error("❌ Final video creation failed:", err.message);
+        reject(err);
+      });
   });
 };
 
