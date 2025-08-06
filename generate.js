@@ -16,7 +16,7 @@ const HEIGHT = 720;
 const FPS = 25;
 
 const checkDirectory = () => {
-  fs.unlinkSync(FILE_LOG_DETAILS);
+  fs.existsSync(FILE_LOG_DETAILS) && fs.unlinkSync(FILE_LOG_DETAILS);
   [TEMP_DIR, OUTPUT_DIR, FRAME_DIR].forEach((e) => {
     fs.rmdirSync(`${e}/`, { recursive: true });
     fs.mkdirSync(`${e}/`);
@@ -29,11 +29,44 @@ const generateFrames = async (slide, index) => {
   const inputImagePath = path.join(INPUT_DIR, slide.image);
   const image = await loadImage(inputImagePath);
 
+  // Calculate base scale to fit image in 1280x720
+  
+  // const iw = image.width;
+  // const ih = image.height;
+  // const imageAspect = iw / ih;
+  // const canvasAspect = WIDTH / HEIGHT;
+
+  // let baseWidth, baseHeight;
+
+  // if (imageAspect > canvasAspect) {
+  //   // Image is wider than canvas
+  //   baseWidth = WIDTH;
+  //   baseHeight = WIDTH / imageAspect;
+  // } else {
+  //   // Image is taller than canvas
+  //   baseHeight = HEIGHT;
+  //   baseWidth = HEIGHT * imageAspect;
+  // }
+
+  // const offsetX = (WIDTH - baseWidth) / 2;
+  // const offsetY = (HEIGHT - baseHeight) / 2;
+
+
+  // Scale image to COVER the canvas (may crop)
+  const iw = image.width;
+  const ih = image.height;
+  const scale = Math.max(WIDTH / iw, HEIGHT / ih); // cover logic
+
+  const baseWidth = iw * scale;
+  const baseHeight = ih * scale;
+
+  // Below code are same for fit image and COVER the canvas
+
   for (let i = 0; i < totalFrames; i++) {
     const canvas = createCanvas(WIDTH, HEIGHT);
     const ctx = canvas.getContext("2d");
 
-    // Calculate zoom factor
+    // Zoom relative to scaled image
     let zoom = 1;
     if (slide.effect === "zoom-in") {
       zoom = 1 + 0.0015 * i;
@@ -41,20 +74,19 @@ const generateFrames = async (slide, index) => {
       zoom = 1.15 - ((1.15 - 1.0) / totalFrames) * i;
     }
 
-    const iw = image.width;
-    const ih = image.height;
-    const scaledWidth = iw * zoom;
-    const scaledHeight = ih * zoom;
-    const x = (WIDTH - scaledWidth) / 2;
-    const y = (HEIGHT - scaledHeight) / 2;
+    const zoomedWidth = baseWidth * zoom;
+    const zoomedHeight = baseHeight * zoom;
+    const drawX = (WIDTH - zoomedWidth) / 2;
+    const drawY = (HEIGHT - zoomedHeight) / 2;
 
-    ctx.drawImage(image, x, y, scaledWidth, scaledHeight);
+    ctx.drawImage(image, drawX, drawY, zoomedWidth, zoomedHeight);
 
-    // Draw text
-    ctx.font = "36px Roboto";
-    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    // Draw text box
     const text = slide.text || "";
+    ctx.font = "36px Roboto";
     const textWidth = ctx.measureText(text).width;
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
     const boxX = (WIDTH - textWidth) / 2 - 20;
     const boxY = HEIGHT - 100;
     const boxHeight = 50;
