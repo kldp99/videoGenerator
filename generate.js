@@ -21,66 +21,40 @@ const removeCreateFolder = () => {
   fs.mkdirSync(`${OUTPUT_DIR}/`);
 };
 
-const detectFocus = async (imagePath, label) => {
-  const image = await loadImage(imagePath);
-  const canvas = createCanvas(image.width, image.height);
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(image, 0, 0, image.width, image.height);
-
-  const input = tf.browser.fromPixels(canvas);
-  const model = await cocoSsd.load();
-  const predictions = await model.detect(input);
-  input.dispose();
-
-  const match = predictions.find((p) =>
-    p.class.toLowerCase().includes(label.toLowerCase())
-  );
-  if (!match) return null;
-
-  const [x, y, w, h] = match.bbox;
-  return {
-    cx: x + w / 2,
-    cy: y + h / 2,
-  };
-};
-
 const processSlide = async (slide, index) => {
   const input = slide.image;
   const duration = slide.duration || 4;
   const output = path.join(TEMP_DIR, `clip${index}.mp4`);
   const size = "1280x720";
-
-  let zoomExpr = "zoom='1+0.002*on'";
-  let xExpr = "x='iw/2-(iw/zoom/2)'";
-  let yExpr = "y='ih/2-(ih/zoom/2)'";
-
-  if (slide.effect === "zoom-out") {
-    const totalFrames = duration * 25;
-    const startZoom = 1.3;
-    const endZoom = 1.0;
-    const rate = (startZoom - endZoom) / totalFrames;
-    zoomExpr = `zoom='max(${endZoom}, ${startZoom.toFixed(3)} - ${rate.toFixed(
-      5
-    )}*on)'`;
-  }
-
-  if (slide.effect === "focus" && slide.focus) {
-    const coords = await detectFocus(input, slide.focus);
-    if (coords) {
-      xExpr = `x='${coords.cx}-(iw/zoom/2)'`;
-      yExpr = `y='${coords.cy}-(ih/zoom/2)'`;
-    }
-  }
-
   const totalFrames = duration * 25;
-  const zoompanFilter = `zoompan=${zoomExpr}:${xExpr}:${yExpr}:d=${totalFrames}:s=${size}:fps=25`;
+
+  let zoomExpr = null;
+  let xExpr = "x='floor(iw/2 - iw/zoom/2)'";
+  let yExpr = "y='floor(ih/2 - ih/zoom/2)'";
+
+  switch (slide.effect) {
+    case "zoom-in":
+      zoomExpr = "zoom='1+0.003*on'";
+      break;
+
+    case "zoom-out":
+      const startZoom = 1.3;
+      const endZoom = 1.0;
+      const rate = (startZoom - endZoom) / totalFrames;
+      zoomExpr = `zoom='max(${endZoom}, ${startZoom.toFixed(3)} - ${rate.toFixed(5)}*on)'`;
+      break;
+  }
+
+  const mainFilter = zoomExpr
+    ? `zoompan=${zoomExpr}:${xExpr}:${yExpr}:d=${totalFrames}:s=${size}:fps=25`
+    : `scale=${size}`;
 
   return new Promise((resolve, reject) => {
-    const command = ffmpeg(input)
+    ffmpeg(input)
       .inputOptions("-loop 1")
       .complexFilter(
         [
-          `[0:v]${zoompanFilter}[z];[z]drawtext=fontfile='${robotoRegular}':text='${slide.text}':fontcolor=white:fontsize=36:x=(w-text_w)/2:y=h-60:box=1:boxcolor=black@0.5:boxborderw=10[out]`,
+          `[0:v]${mainFilter}[z];[z]drawtext=fontfile='${robotoRegular}':text='${slide.text}':fontcolor=white:fontsize=36:x=(w-text_w)/2:y=h-60:box=1:boxcolor=black@0.5:boxborderw=10[out]`,
         ],
         "out"
       )
@@ -96,6 +70,7 @@ const processSlide = async (slide, index) => {
       });
   });
 };
+
 
 const createFinalVideo = async (audioPath = null) => {
   await removeCreateFolder();
