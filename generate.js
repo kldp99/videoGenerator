@@ -23,6 +23,28 @@ const checkDirectory = () => {
   });
 };
 
+const wrapText = (ctx, text, maxWidth) => {
+  const words = text.split(" ");
+  const lines = [];
+  let line = "";
+
+  for (let n = 0; n < words.length; n++) {
+    const testLine = line + words[n] + " ";
+    const metrics = ctx.measureText(testLine);
+    const testWidth = metrics.width;
+
+    if (testWidth > maxWidth && n > 0) {
+      lines.push(line.trim());
+      line = words[n] + " ";
+    } else {
+      line = testLine;
+    }
+  }
+
+  lines.push(line.trim());
+  return lines;
+};
+
 const generateFrames = async (slide, index) => {
   const duration = slide.duration || 4;
   const totalFrames = duration * FPS;
@@ -30,7 +52,7 @@ const generateFrames = async (slide, index) => {
   const image = await loadImage(inputImagePath);
 
   // Calculate base scale to fit image in 1280x720
-  
+
   // const iw = image.width;
   // const ih = image.height;
   // const imageAspect = iw / ih;
@@ -50,7 +72,6 @@ const generateFrames = async (slide, index) => {
 
   // const offsetX = (WIDTH - baseWidth) / 2;
   // const offsetY = (HEIGHT - baseHeight) / 2;
-
 
   // Scale image to COVER the canvas (may crop)
   const iw = image.width;
@@ -81,19 +102,37 @@ const generateFrames = async (slide, index) => {
 
     ctx.drawImage(image, drawX, drawY, zoomedWidth, zoomedHeight);
 
-    // Draw text box
     const text = slide.text || "";
     ctx.font = "36px Roboto";
-    const textWidth = ctx.measureText(text).width;
+    const maxTextWidth = WIDTH - 100;
+    const lines = wrapText(ctx, text, maxTextWidth);
 
+    const lineHeight = 40;
+    const paddingY = 8
+    const paddingX = 20;
+    const gapFromBottom = 50;
+
+    const boxHeight = lineHeight * lines.length + paddingY * 2;
+    const widestLineWidth = Math.max(
+      ...lines.map((l) => ctx.measureText(l).width)
+    );
+    const boxWidth = widestLineWidth + paddingX * 2;
+
+    const boxX = (WIDTH - boxWidth) / 2;
+    const boxY = HEIGHT - gapFromBottom - boxHeight;
+
+    // Draw box background
     ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-    const boxX = (WIDTH - textWidth) / 2 - 20;
-    const boxY = HEIGHT - 100;
-    const boxHeight = 50;
-    ctx.fillRect(boxX, boxY, textWidth + 40, boxHeight);
+    ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
 
+    // Draw each line of text
     ctx.fillStyle = "white";
-    ctx.fillText(text, (WIDTH - textWidth) / 2, HEIGHT - 65);
+    lines.forEach((line, idx) => {
+      const textX = (WIDTH - ctx.measureText(line).width) / 2;
+      const textY = boxY + paddingY + lineHeight * (idx + 1) - 10;
+      ctx.fillText(line, textX, textY);
+    });
+
 
     const framePath = path.join(
       FRAME_DIR,

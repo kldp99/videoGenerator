@@ -2,13 +2,13 @@
   {
     "image": "img1.jpg",
     "effect": "zoom-in",
-    "text": "The Legendary Rolex Daytona",
+    "text": "The Cosmograph Daytona is emblematic of Rolex",
     "duration": 5
   },
   {
     "image": "img2.jpg",
     "effect": "zoom-out",
-    "text": "The Legendary Rolex Daytona",
+    "text": "Launched in 1963, the Cosmograph Daytona has long since transcended its status in the world of watchmaking to become an icon",
     "duration": 5
   }
 ]
