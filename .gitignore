@@ -42,6 +42,8 @@ node_modules/
 jspm_packages/
 temp_clips/
 output/
+frames/
+images/
 
 # Snowpack dependency directory (https://snowpack.dev/)
 web_modules/
