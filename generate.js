@@ -51,28 +51,6 @@ const generateFrames = async (slide, index) => {
   const inputImagePath = path.join(INPUT_DIR, slide.image);
   const image = await loadImage(inputImagePath);
 
-  // Calculate base scale to fit image in 1280x720
-
-  // const iw = image.width;
-  // const ih = image.height;
-  // const imageAspect = iw / ih;
-  // const canvasAspect = WIDTH / HEIGHT;
-
-  // let baseWidth, baseHeight;
-
-  // if (imageAspect > canvasAspect) {
-  //   // Image is wider than canvas
-  //   baseWidth = WIDTH;
-  //   baseHeight = WIDTH / imageAspect;
-  // } else {
-  //   // Image is taller than canvas
-  //   baseHeight = HEIGHT;
-  //   baseWidth = HEIGHT * imageAspect;
-  // }
-
-  // const offsetX = (WIDTH - baseWidth) / 2;
-  // const offsetY = (HEIGHT - baseHeight) / 2;
-
   // Scale image to COVER the canvas (may crop)
   const iw = image.width;
   const ih = image.height;
