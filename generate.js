@@ -156,14 +156,16 @@ const createFinalVideo = async (audioPath = null) => {
     await renderVideo(i, frameCount, videoPath, null);
   }
 
-  // Step 2: Merge with transitions
-  // Step 2: Merge with transitions and audio in one step
+  // Step 2: Merge with transitions and single audio track
   return new Promise((resolve, reject) => {
     let cmd = ffmpeg();
+
+    // Add video inputs
     slides.forEach((_, i) => {
       cmd = cmd.input(path.join(TEMP_DIR, `clip${i}.mp4`));
     });
 
+    // Add audio input if provided
     if (audioPath) {
       cmd = cmd.input(audioPath);
     }
@@ -173,11 +175,11 @@ const createFinalVideo = async (audioPath = null) => {
       "fadeblack",
       "fadewhite",
       "slideleft",
-      "slideright",
+      "slideright"
     ];
     const transitionDuration = 1; // seconds
     let filterParts = [];
-    let currentLabel = `[0:v]`;
+    let currentLabel = "[0:v]";
     let accumulatedTime = slides[0].duration || 4;
 
     for (let i = 1; i < slides.length; i++) {
@@ -192,10 +194,11 @@ const createFinalVideo = async (audioPath = null) => {
       accumulatedTime += (slides[i].duration || 4) - transitionDuration;
     }
 
-    // Map audio to final output
+    // Handle audio mapping only once to avoid :a errors
     let audioMap = "";
     if (audioPath) {
-      audioMap = `;[${slides.length}:a]atrim=duration=${accumulatedTime}[aout]`;
+      // We trim audio to match total video length
+      audioMap = `;[${slides.length}:a]atrim=0:${accumulatedTime},asetpts=PTS-STARTPTS[aout]`;
     }
 
     const filterComplex = filterParts.join("; ") + audioMap;
@@ -211,9 +214,9 @@ const createFinalVideo = async (audioPath = null) => {
       .videoCodec("libx264")
       .audioCodec("aac")
       .outputOptions("-shortest")
-      .save(path.join(OUTPUT_DIR, "final_video.mp4"))
+      .output(path.join(OUTPUT_DIR, "final_video.mp4"))
       .on("end", () => {
-        console.log("✅ Final video with transitions and audio created.");
+        console.log("✅ Final video with smooth transitions and clean audio created.");
         resolve();
       })
       .on("error", (err, stdout, stderr) => {
@@ -224,5 +227,6 @@ const createFinalVideo = async (audioPath = null) => {
       .run();
   });
 };
+
 
 createFinalVideo("audio/narration.mp3").catch(console.error);
