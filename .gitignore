@@ -44,6 +44,7 @@ temp_clips/
 output/
 frames/
 images/
+files.txt
 
 # Snowpack dependency directory (https://snowpack.dev/)
 web_modules/

@@ -51,21 +51,17 @@ const generateFrames = async (slide, index) => {
   const inputImagePath = path.join(INPUT_DIR, slide.image);
   const image = await loadImage(inputImagePath);
 
-  // Scale image to COVER the canvas (may crop)
   const iw = image.width;
   const ih = image.height;
-  const scale = Math.max(WIDTH / iw, HEIGHT / ih); // cover logic
+  const scale = Math.max(WIDTH / iw, HEIGHT / ih);
 
   const baseWidth = iw * scale;
   const baseHeight = ih * scale;
-
-  // Below code are same for fit image and COVER the canvas
 
   for (let i = 0; i < totalFrames; i++) {
     const canvas = createCanvas(WIDTH, HEIGHT);
     const ctx = canvas.getContext("2d");
 
-    // Zoom relative to scaled image
     let zoom = 1;
     if (slide.effect === "zoom-in") {
       zoom = 1 + 0.0015 * i;
@@ -86,7 +82,7 @@ const generateFrames = async (slide, index) => {
     const lines = wrapText(ctx, text, maxTextWidth);
 
     const lineHeight = 40;
-    const paddingY = 8
+    const paddingY = 8;
     const paddingX = 20;
     const gapFromBottom = 50;
 
@@ -99,18 +95,15 @@ const generateFrames = async (slide, index) => {
     const boxX = (WIDTH - boxWidth) / 2;
     const boxY = HEIGHT - gapFromBottom - boxHeight;
 
-    // Draw box background
     ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
     ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
 
-    // Draw each line of text
     ctx.fillStyle = "white";
     lines.forEach((line, idx) => {
       const textX = (WIDTH - ctx.measureText(line).width) / 2;
       const textY = boxY + paddingY + lineHeight * (idx + 1) - 10;
       ctx.fillText(line, textX, textY);
     });
-
 
     const framePath = path.join(
       FRAME_DIR,
@@ -155,38 +148,80 @@ const createFinalVideo = async (audioPath = null) => {
   await checkDirectory();
   const slides = JSON.parse(fs.readFileSync("script.json", "utf-8"));
 
+  // Step 1: Render individual slide videos
   for (let i = 0; i < slides.length; i++) {
     await generateFrames(slides[i], i);
     const frameCount = (slides[i].duration || 4) * FPS;
     const videoPath = path.join(TEMP_DIR, `clip${i}.mp4`);
     await renderVideo(i, frameCount, videoPath, null);
   }
-  const clipFiles = slides
-    .map((_, i) => `file '${path.posix.join(TEMP_DIR, `clip${i}.mp4`)}'`)
-    .join("\n");
 
-  fs.writeFileSync(FILE_LOG_DETAILS, clipFiles);
-
+  // Step 2: Merge with transitions
+  // Step 2: Merge with transitions and audio in one step
   return new Promise((resolve, reject) => {
-    let cmd = ffmpeg()
-      .input(FILE_LOG_DETAILS)
-      .inputOptions(["-f", "concat", "-safe", "0"])
-      .outputOptions(["-c:v", "libx264"]);
+    let cmd = ffmpeg();
+    slides.forEach((_, i) => {
+      cmd = cmd.input(path.join(TEMP_DIR, `clip${i}.mp4`));
+    });
 
     if (audioPath) {
-      cmd = cmd.input(audioPath).outputOptions("-shortest");
+      cmd = cmd.input(audioPath);
+    }
+
+    const transitions = [
+      "fade",
+      "fadeblack",
+      "fadewhite",
+      "slideleft",
+      "slideright",
+    ];
+    const transitionDuration = 1; // seconds
+    let filterParts = [];
+    let currentLabel = `[0:v]`;
+    let accumulatedTime = slides[0].duration || 4;
+
+    for (let i = 1; i < slides.length; i++) {
+      const transitionType =
+        transitions[Math.floor(Math.random() * transitions.length)];
+      const offset = accumulatedTime - transitionDuration;
+
+      filterParts.push(
+        `${currentLabel}[${i}:v]xfade=transition=${transitionType}:duration=${transitionDuration}:offset=${offset}[v${i}]`
+      );
+      currentLabel = `[v${i}]`;
+      accumulatedTime += (slides[i].duration || 4) - transitionDuration;
+    }
+
+    // Map audio to final output
+    let audioMap = "";
+    if (audioPath) {
+      audioMap = `;[${slides.length}:a]atrim=duration=${accumulatedTime}[aout]`;
+    }
+
+    const filterComplex = filterParts.join("; ") + audioMap;
+
+    let outputs = ["-map", currentLabel];
+    if (audioPath) {
+      outputs.push("-map", "[aout]");
     }
 
     cmd
+      .complexFilter(filterComplex)
+      .outputOptions(outputs)
+      .videoCodec("libx264")
+      .audioCodec("aac")
+      .outputOptions("-shortest")
       .save(path.join(OUTPUT_DIR, "final_video.mp4"))
       .on("end", () => {
-        console.log("\n✅ Final video created at output/final_video.mp4");
+        console.log("✅ Final video with transitions and audio created.");
         resolve();
       })
-      .on("error", (err) => {
-        console.error("❌ Final video creation failed:", err.message);
+      .on("error", (err, stdout, stderr) => {
+        console.error("❌ Merge error:", err.message);
+        console.log("stderr:\n", stderr);
         reject(err);
-      });
+      })
+      .run();
   });
 };
 
