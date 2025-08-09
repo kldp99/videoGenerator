@@ -58,6 +58,11 @@ const generateFrames = async (slide, index) => {
   const baseWidth = iw * scale;
   const baseHeight = ih * scale;
 
+  // Prepare the full text and split it into letters
+  const fullText = slide.text || "";
+  const letters = fullText.split("");
+  const totalLetters = letters.length;
+
   for (let i = 0; i < totalFrames; i++) {
     const canvas = createCanvas(WIDTH, HEIGHT);
     const ctx = canvas.getContext("2d");
@@ -76,10 +81,15 @@ const generateFrames = async (slide, index) => {
 
     ctx.drawImage(image, drawX, drawY, zoomedWidth, zoomedHeight);
 
-    const text = slide.text || "";
+    // Calculate how many letters to show for this frame
+    const lettersToShow = Math.floor((i / totalFrames) * totalLetters);
+
+    // Show at least one letter if text exists
+    const textToShow = letters.slice(0, lettersToShow > 0 ? lettersToShow : 1).join("");
+
     ctx.font = "36px Roboto";
     const maxTextWidth = WIDTH - 100;
-    const lines = wrapText(ctx, text, maxTextWidth);
+    const lines = wrapText(ctx, textToShow, maxTextWidth);
 
     const lineHeight = 40;
     const paddingY = 8;
@@ -112,6 +122,7 @@ const generateFrames = async (slide, index) => {
     fs.writeFileSync(framePath, canvas.toBuffer("image/png"));
   }
 };
+
 
 const renderVideo = (
   slideIndex,
