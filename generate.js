@@ -3,8 +3,8 @@ const path = require("path");
 const ffmpegPath = require("ffmpeg-static");
 const ffmpeg = require("fluent-ffmpeg");
 ffmpeg.setFfmpegPath(ffmpegPath);
-
 const { createCanvas, loadImage } = require("canvas");
+const { getVideoDurationInSeconds } = require("get-video-duration");
 
 const INPUT_DIR = "images";
 const FRAME_DIR = "frames";
@@ -89,7 +89,9 @@ const generateFrames = async (slide, index) => {
       lettersToShow = totalLetters;
     }
 
-    const textToShow = letters.slice(0, lettersToShow > 0 ? lettersToShow : 1).join("");
+    const textToShow = letters
+      .slice(0, lettersToShow > 0 ? lettersToShow : 1)
+      .join("");
 
     ctx.font = "36px Roboto";
     const maxTextWidth = WIDTH - 100;
@@ -101,14 +103,16 @@ const generateFrames = async (slide, index) => {
     const gapFromBottom = 50;
 
     const boxHeight = lineHeight * lines.length + paddingY * 2;
-    const widestLineWidth = Math.max(...lines.map((l) => ctx.measureText(l).width));
+    const widestLineWidth = Math.max(
+      ...lines.map((l) => ctx.measureText(l).width)
+    );
     const boxWidth = widestLineWidth + paddingX * 2;
 
     const boxX = (WIDTH - boxWidth) / 2;
     const boxY = HEIGHT - gapFromBottom - boxHeight;
 
     // Draw semi-transparent background box
-    ctx.fillStyle = "#b76e79";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
     ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
 
     ctx.fillStyle = "#fff";
@@ -123,7 +127,8 @@ const generateFrames = async (slide, index) => {
         // If the character just appeared within the last few frames, fade it in
         let alpha = 1;
         if (letterIndex === lettersToShow - 1 && i < revealFrames) {
-          let frameIntoLetter = (i / revealFrames) * totalLetters - (lettersToShow - 1);
+          let frameIntoLetter =
+            (i / revealFrames) * totalLetters - (lettersToShow - 1);
           alpha = Math.min(1, Math.max(0, frameIntoLetter * 5)); // fade speed
         }
         ctx.globalAlpha = alpha;
@@ -141,8 +146,6 @@ const generateFrames = async (slide, index) => {
     fs.writeFileSync(framePath, canvas.toBuffer("image/png"));
   }
 };
-
-
 
 const renderVideo = (
   slideIndex,
@@ -175,69 +178,82 @@ const renderVideo = (
   });
 };
 
+// ✅ New helper: normalize videos before merge
+async function normalizeVideo(inputPath, outputPath) {
+  return new Promise((resolve, reject) => {
+    ffmpeg(inputPath)
+      .outputOptions([
+        `-vf scale=${WIDTH}:${HEIGHT},fps=${FPS},format=yuv420p`,
+        "-c:v libx264",
+        "-preset fast",
+        "-crf 18",
+        "-c:a aac",
+        "-ar 44100"
+      ])
+      .on("end", resolve)
+      .on("error", reject)
+      .save(outputPath);
+  });
+}
+
 const createFinalVideo = async (audioPath = null) => {
   await checkDirectory();
   const slides = JSON.parse(fs.readFileSync("script.json", "utf-8"));
 
-  // Step 1: Render individual slide videos
+  // Step 1: Render and normalize individual slide videos
   for (let i = 0; i < slides.length; i++) {
     await generateFrames(slides[i], i);
     const frameCount = (slides[i].duration || 4) * FPS;
-    const videoPath = path.join(TEMP_DIR, `clip${i}.mp4`);
-    await renderVideo(i, frameCount, videoPath, null);
+    const rawVideoPath = path.join(TEMP_DIR, `clip${i}_raw.mp4`);
+    const normVideoPath = path.join(TEMP_DIR, `clip${i}.mp4`);
+    await renderVideo(i, frameCount, rawVideoPath, null);
+    await normalizeVideo(rawVideoPath, normVideoPath);
   }
 
-  // Step 2: Merge with transitions and single audio track
-  return new Promise((resolve, reject) => {
-    let cmd = ffmpeg();
+  // Step 2: Normalize promo video
+  const promoNormPath = path.join(TEMP_DIR, "promo_norm.mp4");
+  await normalizeVideo("promoVideo/promo.mp4", promoNormPath);
 
-    // Add video inputs
+  // Step 3: Merge with transitions
+  return new Promise(async (resolve, reject) => {
+    let cmd = ffmpeg();
+    cmd = cmd.input(promoNormPath);
     slides.forEach((_, i) => {
       cmd = cmd.input(path.join(TEMP_DIR, `clip${i}.mp4`));
     });
+    if (audioPath) cmd = cmd.input(audioPath);
 
-    // Add audio input if provided
-    if (audioPath) {
-      cmd = cmd.input(audioPath);
-    }
-
-    const transitions = [
-      "fade",
-      "fadeblack",
-      "fadewhite",
-      "slideleft",
-      "slideright"
-    ];
-    const transitionDuration = 1; // seconds
+    const transitions = ["fade", "fadeblack", "fadewhite", "slideleft", "slideright"];
+    const transitionDuration = 1;
     let filterParts = [];
+    const totalVideos = slides.length + 1;
     let currentLabel = "[0:v]";
-    let accumulatedTime = slides[0].duration || 4;
+    let accumulatedTime = await getVideoDuration(promoNormPath);
 
-    for (let i = 1; i < slides.length; i++) {
-      const transitionType =
-        transitions[Math.floor(Math.random() * transitions.length)];
+    for (let i = 1; i < totalVideos; i++) {
+      const transitionType = transitions[Math.floor(Math.random() * transitions.length)];
       const offset = accumulatedTime - transitionDuration;
 
       filterParts.push(
         `${currentLabel}[${i}:v]xfade=transition=${transitionType}:duration=${transitionDuration}:offset=${offset}[v${i}]`
       );
+
+      let clipDuration = i === 0
+        ? await getVideoDuration(promoNormPath)
+        : slides[i - 1].duration || 4;
+
+      accumulatedTime += clipDuration - transitionDuration;
       currentLabel = `[v${i}]`;
-      accumulatedTime += (slides[i].duration || 4) - transitionDuration;
     }
 
-    // Handle audio mapping only once to avoid :a errors
     let audioMap = "";
     if (audioPath) {
-      // We trim audio to match total video length
-      audioMap = `;[${slides.length}:a]atrim=0:${accumulatedTime},asetpts=PTS-STARTPTS[aout]`;
+      audioMap = `;[${totalVideos}:a]atrim=0:${accumulatedTime},asetpts=PTS-STARTPTS[aout]`;
     }
 
     const filterComplex = filterParts.join("; ") + audioMap;
-
     let outputs = ["-map", currentLabel];
-    if (audioPath) {
-      outputs.push("-map", "[aout]");
-    }
+    if (audioPath) outputs.push("-map", "[aout]");
 
     cmd
       .complexFilter(filterComplex)
@@ -247,7 +263,7 @@ const createFinalVideo = async (audioPath = null) => {
       .outputOptions("-shortest")
       .output(path.join(OUTPUT_DIR, "final_video.mp4"))
       .on("end", () => {
-        console.log("✅ Final video with smooth transitions and clean audio created.");
+        console.log("✅ Final video created without merge errors.");
         resolve();
       })
       .on("error", (err, stdout, stderr) => {
@@ -259,5 +275,15 @@ const createFinalVideo = async (audioPath = null) => {
   });
 };
 
+
+// ✅ Helper to get video duration without ffprobe
+async function getVideoDuration(filePath) {
+  try {
+    return await getVideoDurationInSeconds(filePath);
+  } catch (err) {
+    console.error("Error getting duration:", err);
+    return 0;
+  }
+}
 
 createFinalVideo("audio/narration.mp3").catch(console.error);
