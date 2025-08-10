@@ -179,7 +179,7 @@ const renderVideo = (
 };
 
 // ✅ New helper: normalize videos before merge
-async function normalizeVideo(inputPath, outputPath) {
+const normalizeVideo = async (inputPath, outputPath) => {
   return new Promise((resolve, reject) => {
     ffmpeg(inputPath)
       .outputOptions([
@@ -194,13 +194,14 @@ async function normalizeVideo(inputPath, outputPath) {
       .on("error", reject)
       .save(outputPath);
   });
-}
+};
 
 const createFinalVideo = async (audioPath = null) => {
+  console.time("videoMakingTime");
   await checkDirectory();
   const slides = JSON.parse(fs.readFileSync("script.json", "utf-8"));
 
-  // Step 1: Render and normalize individual slide videos
+  // Step 1: Render & normalize individual slide videos
   for (let i = 0; i < slides.length; i++) {
     await generateFrames(slides[i], i);
     const frameCount = (slides[i].duration || 4) * FPS;
@@ -218,40 +219,80 @@ const createFinalVideo = async (audioPath = null) => {
   return new Promise(async (resolve, reject) => {
     let cmd = ffmpeg();
     cmd = cmd.input(promoNormPath);
+
     slides.forEach((_, i) => {
       cmd = cmd.input(path.join(TEMP_DIR, `clip${i}.mp4`));
     });
+
     if (audioPath) cmd = cmd.input(audioPath);
 
-    const transitions = ["fade", "fadeblack", "fadewhite", "slideleft", "slideright"];
+    const transitions = [
+      "fade",
+      "fadeblack",
+      "fadewhite",
+      "slideleft",
+      "slideright",
+    ];
     const transitionDuration = 1;
-    let filterParts = [];
+    const firstTransitionDuration = 2;
     const totalVideos = slides.length + 1;
+    const firstTransitionType = "fade"; // fixed fade for first transition
+
+    // -------- VIDEO FILTER CHAIN --------
+    let videoParts = [];
     let currentLabel = "[0:v]";
     let accumulatedTime = await getVideoDuration(promoNormPath);
 
     for (let i = 1; i < totalVideos; i++) {
-      const transitionType = transitions[Math.floor(Math.random() * transitions.length)];
-      const offset = accumulatedTime - transitionDuration;
+      // Random for others, fixed for first
+      const transitionType = 
+        i === 1
+          ? firstTransitionType
+          : transitions[Math.floor(Math.random() * transitions.length)];
 
-      filterParts.push(
-        `${currentLabel}[${i}:v]xfade=transition=${transitionType}:duration=${transitionDuration}:offset=${offset}[v${i}]`
+      // Use longer duration for first transition only
+      const currentTransitionDuration =
+        i === 1 ? firstTransitionDuration : transitionDuration;
+
+      const offset = accumulatedTime - currentTransitionDuration;
+
+      videoParts.push(
+        `${currentLabel}[${i}:v]xfade=transition=${transitionType}:duration=${currentTransitionDuration}:offset=${offset}[v${i}]`
       );
 
-      let clipDuration = i === 0
-        ? await getVideoDuration(promoNormPath)
-        : slides[i - 1].duration || 4;
-
-      accumulatedTime += clipDuration - transitionDuration;
+      let clipDuration = slides[i - 1]?.duration || 4;
+      accumulatedTime += clipDuration - currentTransitionDuration;
       currentLabel = `[v${i}]`;
     }
 
-    let audioMap = "";
+    // -------- AUDIO FILTER CHAIN --------
+    let audioParts = [];
+    const promoDur = await getVideoDuration(promoNormPath);
+    audioParts.push(`[0:a]atrim=0:${promoDur},asetpts=PTS-STARTPTS[aud0]`);
+
     if (audioPath) {
-      audioMap = `;[${totalVideos}:a]atrim=0:${accumulatedTime},asetpts=PTS-STARTPTS[aout]`;
+      let audioStart = 0; // track current position in audio
+      for (let i = 0; i < slides.length; i++) {
+        let dur = slides[i].duration || 4;
+        audioParts.push(
+          `[${totalVideos}:a]atrim=${audioStart}:${
+            audioStart + dur
+          },asetpts=PTS-STARTPTS[aud${i + 1}]`
+        );
+        audioStart += dur; // move start position forward
+      }
     }
 
-    const filterComplex = filterParts.join("; ") + audioMap;
+    const audioConcatInputs = audioParts
+      .map((_, idx) => `[aud${idx}]`)
+      .join("");
+    const audioChain = `${audioParts.join(
+      "; "
+    )}; ${audioConcatInputs}concat=n=${audioParts.length}:v=0:a=1[aout]`;
+
+    // -------- FINAL FILTER COMPLEX --------
+    const filterComplex = [...videoParts, audioChain].join("; ");
+
     let outputs = ["-map", currentLabel];
     if (audioPath) outputs.push("-map", "[aout]");
 
@@ -264,6 +305,7 @@ const createFinalVideo = async (audioPath = null) => {
       .output(path.join(OUTPUT_DIR, "final_video.mp4"))
       .on("end", () => {
         console.log("✅ Final video created without merge errors.");
+        console.timeEnd("videoMakingTime");
         resolve();
       })
       .on("error", (err, stdout, stderr) => {
@@ -275,15 +317,14 @@ const createFinalVideo = async (audioPath = null) => {
   });
 };
 
-
 // ✅ Helper to get video duration without ffprobe
-async function getVideoDuration(filePath) {
+const getVideoDuration = async (filePath) => {
   try {
     return await getVideoDurationInSeconds(filePath);
   } catch (err) {
     console.error("Error getting duration:", err);
     return 0;
   }
-}
+};
 
-createFinalVideo("audio/narration.mp3").catch(console.error);
+createFinalVideo("audio/audioFile.mp3").catch(console.error);
