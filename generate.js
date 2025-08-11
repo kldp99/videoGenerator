@@ -301,13 +301,14 @@ const createFinalVideo = async (audioPath = null) => {
   // Step 4: Add Logo Overlay
   const logoPath = path.join("impImg", "logo.png"); // Transparent PNG logo
   const logoSize = 120; // px
-  const margin = 20; // px from edge
+  const logoMarginRight = 20; // from right edge
+  const logoMarginTop = 0; // from top edge
 
   await new Promise((resolve, reject) => {
     ffmpeg(path.join(OUTPUT_DIR, "final_video_no_logo.mp4"))
       .input(logoPath)
       .complexFilter([
-        `[1:v]scale=${logoSize}:-1[logo]; [0:v][logo]overlay=W-w-${margin}:${margin}`,
+        `[1:v]scale=${logoSize}:-1[logo]; [0:v][logo]overlay=W-w-${logoMarginRight}:${logoMarginTop}`,
       ])
       .videoCodec("libx264")
       .audioCodec("aac")
