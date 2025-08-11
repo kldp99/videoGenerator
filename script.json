@@ -3,14 +3,13 @@
     "image": "img1.jpg",
     "effect": "zoom-in",
     "text": "The Cosmograph Daytona is emblematic of Rolex",
-    "duration": 10,
+    "duration": 5,
     "textDuration": 2
   },
   {
-    "image": "img2.jpg",
-    "effect": "zoom-out",
+    "image": "lastImg.jpg",
+    "effect": "",
     "text": "The Cosmograph Daytona is emblematic of Rolex",
-    "duration": 10,
-    "textDuration": 2
+    "duration": 10
   }
 ]

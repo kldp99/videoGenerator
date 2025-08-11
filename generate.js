@@ -57,21 +57,20 @@ const generateFrames = async (slide, index) => {
   const baseWidth = iw * scale;
   const baseHeight = ih * scale;
 
-  // Prepare the full text and split it into letters
   const fullText = slide.text || "";
   const letters = fullText.split("");
   const totalLetters = letters.length;
-
-  const revealFrames = Math.min(FPS * slide?.textDuration, totalFrames); // 2 sec reveal time
+  const revealFrames = Math.min(FPS * slide?.textDuration, totalFrames);
 
   for (let i = 0; i < totalFrames; i++) {
     const canvas = createCanvas(WIDTH, HEIGHT);
     const ctx = canvas.getContext("2d");
 
+    // Zoom effect
     let zoom = 1;
-    if (slide.effect === "zoom-in") {
+    if (slide?.effect === "zoom-in") {
       zoom = 1 + 0.0015 * i;
-    } else if (slide.effect === "zoom-out") {
+    } else if (slide?.effect === "zoom-out") {
       zoom = 1.15 - ((1.15 - 1.0) / totalFrames) * i;
     }
 
@@ -81,13 +80,10 @@ const generateFrames = async (slide, index) => {
     const drawY = (HEIGHT - zoomedHeight) / 2;
     ctx.drawImage(image, drawX, drawY, zoomedWidth, zoomedHeight);
 
-    // Figure out how many letters to show so far
-    let lettersToShow;
-    if (i < revealFrames) {
-      lettersToShow = Math.floor((i / revealFrames) * totalLetters);
-    } else {
-      lettersToShow = totalLetters;
-    }
+    // Letter reveal
+    let lettersToShow = i < revealFrames
+      ? Math.floor((i / revealFrames) * totalLetters)
+      : totalLetters;
 
     const textToShow = letters
       .slice(0, lettersToShow > 0 ? lettersToShow : 1)
@@ -111,25 +107,23 @@ const generateFrames = async (slide, index) => {
     const boxX = (WIDTH - boxWidth) / 2;
     const boxY = HEIGHT - gapFromBottom - boxHeight;
 
-    // Draw semi-transparent background box
+    // Background box
     ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
     ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
 
     ctx.fillStyle = "#fff";
-
-    // Draw each letter with fade-in effect during reveal phase
     let letterIndex = 0;
+
     lines.forEach((line, idx) => {
       let textX = (WIDTH - ctx.measureText(line).width) / 2;
       let textY = boxY + paddingY + lineHeight * (idx + 1) - 10;
 
       for (let char of line) {
-        // If the character just appeared within the last few frames, fade it in
         let alpha = 1;
         if (letterIndex === lettersToShow - 1 && i < revealFrames) {
           let frameIntoLetter =
             (i / revealFrames) * totalLetters - (lettersToShow - 1);
-          alpha = Math.min(1, Math.max(0, frameIntoLetter * 5)); // fade speed
+          alpha = Math.min(1, Math.max(0, frameIntoLetter * 5));
         }
         ctx.globalAlpha = alpha;
         ctx.fillText(char, textX, textY);
@@ -146,6 +140,7 @@ const generateFrames = async (slide, index) => {
     fs.writeFileSync(framePath, canvas.toBuffer("image/png"));
   }
 };
+
 
 const renderVideo = (
   slideIndex,
