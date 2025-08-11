@@ -81,9 +81,10 @@ const generateFrames = async (slide, index) => {
     ctx.drawImage(image, drawX, drawY, zoomedWidth, zoomedHeight);
 
     // Letter reveal
-    let lettersToShow = i < revealFrames
-      ? Math.floor((i / revealFrames) * totalLetters)
-      : totalLetters;
+    let lettersToShow =
+      i < revealFrames
+        ? Math.floor((i / revealFrames) * totalLetters)
+        : totalLetters;
 
     const textToShow = letters
       .slice(0, lettersToShow > 0 ? lettersToShow : 1)
@@ -141,7 +142,6 @@ const generateFrames = async (slide, index) => {
   }
 };
 
-
 const renderVideo = (
   slideIndex,
   frameCount,
@@ -183,7 +183,7 @@ const normalizeVideo = async (inputPath, outputPath) => {
         "-preset fast",
         "-crf 18",
         "-c:a aac",
-        "-ar 44100"
+        "-ar 44100",
       ])
       .on("end", resolve)
       .on("error", reject)
@@ -211,7 +211,7 @@ const createFinalVideo = async (audioPath = null) => {
   await normalizeVideo("promoVideo/promo.mp4", promoNormPath);
 
   // Step 3: Merge with transitions
-  return new Promise(async (resolve, reject) => {
+  await new Promise(async (resolve, reject) => {
     let cmd = ffmpeg();
     cmd = cmd.input(promoNormPath);
 
@@ -231,21 +231,18 @@ const createFinalVideo = async (audioPath = null) => {
     const transitionDuration = 1;
     const firstTransitionDuration = 2;
     const totalVideos = slides.length + 1;
-    const firstTransitionType = "fade"; // fixed fade for first transition
+    const firstTransitionType = "fade";
 
-    // -------- VIDEO FILTER CHAIN --------
     let videoParts = [];
     let currentLabel = "[0:v]";
     let accumulatedTime = await getVideoDuration(promoNormPath);
 
     for (let i = 1; i < totalVideos; i++) {
-      // Random for others, fixed for first
-      const transitionType = 
-        i === 1
+      const transitionType =
+        i < 3
           ? firstTransitionType
           : transitions[Math.floor(Math.random() * transitions.length)];
 
-      // Use longer duration for first transition only
       const currentTransitionDuration =
         i === 1 ? firstTransitionDuration : transitionDuration;
 
@@ -260,13 +257,12 @@ const createFinalVideo = async (audioPath = null) => {
       currentLabel = `[v${i}]`;
     }
 
-    // -------- AUDIO FILTER CHAIN --------
     let audioParts = [];
     const promoDur = await getVideoDuration(promoNormPath);
     audioParts.push(`[0:a]atrim=0:${promoDur},asetpts=PTS-STARTPTS[aud0]`);
 
     if (audioPath) {
-      let audioStart = 0; // track current position in audio
+      let audioStart = 0;
       for (let i = 0; i < slides.length; i++) {
         let dur = slides[i].duration || 4;
         audioParts.push(
@@ -274,7 +270,7 @@ const createFinalVideo = async (audioPath = null) => {
             audioStart + dur
           },asetpts=PTS-STARTPTS[aud${i + 1}]`
         );
-        audioStart += dur; // move start position forward
+        audioStart += dur;
       }
     }
 
@@ -285,7 +281,6 @@ const createFinalVideo = async (audioPath = null) => {
       "; "
     )}; ${audioConcatInputs}concat=n=${audioParts.length}:v=0:a=1[aout]`;
 
-    // -------- FINAL FILTER COMPLEX --------
     const filterComplex = [...videoParts, audioChain].join("; ");
 
     let outputs = ["-map", currentLabel];
@@ -297,17 +292,33 @@ const createFinalVideo = async (audioPath = null) => {
       .videoCodec("libx264")
       .audioCodec("aac")
       .outputOptions("-shortest")
+      .output(path.join(OUTPUT_DIR, "final_video_no_logo.mp4")) // save without logo
+      .on("end", resolve)
+      .on("error", reject)
+      .run();
+  });
+
+  // Step 4: Add Logo Overlay
+  const logoPath = path.join("impImg", "logo.png"); // Transparent PNG logo
+  const logoSize = 120; // px
+  const margin = 20; // px from edge
+
+  await new Promise((resolve, reject) => {
+    ffmpeg(path.join(OUTPUT_DIR, "final_video_no_logo.mp4"))
+      .input(logoPath)
+      .complexFilter([
+        `[1:v]scale=${logoSize}:-1[logo]; [0:v][logo]overlay=W-w-${margin}:${margin}`,
+      ])
+      .videoCodec("libx264")
+      .audioCodec("aac")
+      .outputOptions("-shortest")
       .output(path.join(OUTPUT_DIR, "final_video.mp4"))
       .on("end", () => {
-        console.log("✅ Final video created without merge errors.");
+        console.log("✅ Final video created with logo overlay.");
         console.timeEnd("videoMakingTime");
         resolve();
       })
-      .on("error", (err, stdout, stderr) => {
-        console.error("❌ Merge error:", err.message);
-        console.log("stderr:\n", stderr);
-        reject(err);
-      })
+      .on("error", reject)
       .run();
   });
 };

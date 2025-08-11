@@ -1,5 +1,11 @@
 [
   {
+    "image": "black.jpg",
+    "effect": "",
+    "text": "",
+    "duration": 3
+  },
+  {
     "image": "img1.jpg",
     "effect": "zoom-in",
     "text": "The Cosmograph Daytona is emblematic of Rolex",
@@ -9,7 +15,7 @@
   {
     "image": "lastImg.jpg",
     "effect": "",
-    "text": "The Cosmograph Daytona is emblematic of Rolex",
+    "text": "",
     "duration": 10
   }
 ]
