@@ -312,7 +312,11 @@ const createFinalVideo = async (audioPath = null) => {
       ])
       .videoCodec("libx264")
       .audioCodec("aac")
-      .outputOptions("-shortest")
+      .outputOptions([
+        "-shortest",
+        "-af",
+        "volume=1.5", // Boost audio volume
+      ])
       .output(path.join(OUTPUT_DIR, "final_video.mp4"))
       .on("end", () => {
         console.log("✅ Final video created with logo overlay.");
