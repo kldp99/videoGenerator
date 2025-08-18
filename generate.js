@@ -11,9 +11,9 @@ const FRAME_DIR = "frames";
 const OUTPUT_DIR = "output";
 const TEMP_DIR = "temp_clips";
 const FILE_LOG_DETAILS = "files.txt";
-const WIDTH = 1280;
-const HEIGHT = 720;
-const FPS = 25;
+const WIDTH = 3840;
+const HEIGHT = 2160;
+const FPS = 60;
 
 const checkDirectory = () => {
   fs.existsSync(FILE_LOG_DETAILS) && fs.unlinkSync(FILE_LOG_DETAILS);
@@ -90,7 +90,7 @@ const generateFrames = async (slide, index) => {
       .slice(0, lettersToShow > 0 ? lettersToShow : 1)
       .join("");
 
-    ctx.font = "36px Roboto";
+    ctx.font = "96px Roboto";
     const maxTextWidth = WIDTH - 100;
     const lines = wrapText(ctx, textToShow, maxTextWidth);
 
@@ -300,7 +300,7 @@ const createFinalVideo = async (audioPath = null) => {
 
   // Step 4: Add Logo Overlay
   const logoPath = path.join("impImg", "logo.png"); // Transparent PNG logo
-  const logoSize = 120; // px
+  const logoSize = 300; // px
   const logoMarginRight = 20; // from right edge
   const logoMarginTop = 0; // from top edge
 
